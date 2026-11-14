@@ -15,3 +15,8 @@ accounts.observation_end 为本批样例可观测成交的截止日；null 表�
 ## 快照样例字段补充
 
 以上字段说明对应当前初始快照中的本地合成记录；示例不存在的历史字段不视为隐藏接口要求。
+
+
+## 已有能力与字段边界
+
+sessions.account_id 是所属试用企业，不从会话编号推断关联；employee_hash 跨账户相同表示同一员工。accounts.observation_end 是目前确认能够观测成交的截止日，只有在试用结束且结果观测充分时才可判定未成交；outcomes 缺行仅表示尚无签约记录。当前 bag_coverage 报告撤回后会话覆盖，不含训练、销售排序或行为解释。
