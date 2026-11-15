@@ -2,6 +2,7 @@ from collections import Counter
 from pathlib import Path
 
 from app.contracts import latest, load
+from app.conversion import trial_conversion
 from app.repository import digest
 
 TABLES = ['accounts', 'sessions', 'outcomes', 'withdrawals']
@@ -21,7 +22,7 @@ def bag_coverage(snapshot, options):
 def action(repository, request):
     raise ValueError('尚未登记该业务的可写操作')
 
-OPERATIONS = {'bag_coverage': bag_coverage}
+OPERATIONS = {'bag_coverage': bag_coverage, 'trial_conversion': trial_conversion}
 
 
 def seed_dataset():

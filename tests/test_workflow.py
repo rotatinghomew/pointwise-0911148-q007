@@ -84,3 +84,60 @@ class WorkflowTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join(timeout=5)
+
+
+class ConversionWorkflowTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.source = Path(self.temporary.name) / 'source.json'
+        self.source.write_text(Path('data/source.json').read_text())
+        self.service = Service(self.source, Path(self.temporary.name) / 'state.sqlite3')
+        self.request = {'request_id': 'conversion', 'operation': 'trial_conversion',
+                        'as_of': '2026-09-30T23:59:59Z',
+                        'options': {'list_version': 'sales-list-2026-09'}}
+
+    def test_service_passes_request_as_of_into_analysis(self):
+        result = self.service.run(self.request)
+        self.assertEqual(result['as_of'], self.request['as_of'])
+        self.assertTrue(result['versions']['consistent'])
+
+    def test_conflicting_option_as_of_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.service.run({**self.request, 'options': {'list_version': 'v',
+                                                          'as_of': '2026-08-01'}})
+
+    def test_list_version_is_registered_and_bound_to_content(self):
+        result = self.service.run(self.request)
+        stored = self.service.repository.current_list('sales-list-2026-09')
+        self.assertEqual(stored['account_ids'], result['list']['account_ids'])
+        with self.assertRaises(ValueError):
+            self.service.run({**self.request, 'request_id': 'other',
+                              'options': {'list_version': 'sales-list-2026-09',
+                                          'list_digest': 'deadbeef'}})
+
+    def test_reusing_list_version_for_different_accounts_conflicts(self):
+        self.service.run(self.request)
+        from app.repository import Conflict
+        with self.assertRaises(Conflict):
+            self.service.repository.save_list('sales-list-2026-09',
+                                              {'version': 'sales-list-2026-09',
+                                               'account_ids': ['a9-9']})
+
+    def test_replay_returns_original_even_after_source_change(self):
+        first = self.service.run(self.request)
+        self.source.write_text('{}')
+        self.assertEqual(first, self.service.run(self.request))
+
+    def test_withdrawal_rescore_uses_new_request_id(self):
+        first = self.service.run(self.request)
+        dataset = json.loads(Path('data/source.json').read_text())
+        dataset['withdrawals'].append({'employee_hash': 'e0-0',
+                                       'received_at': '2026-10-01T00:00:00Z'})
+        self.source.write_text(json.dumps(dataset))
+        rescored = self.service.run({**self.request, 'request_id': 'conversion-2',
+                                     'as_of': '2026-10-02T00:00:00Z'})
+        self.assertNotEqual(first['request_id'], rescored['request_id'])
+        evidence = {session_id for item in rescored['ranking'] + rescored['limited']
+                    for session_id in item['evidence']['session_ids']}
+        self.assertNotIn('a0-0-s0', evidence)

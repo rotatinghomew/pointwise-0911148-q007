@@ -35,6 +35,11 @@ class Repository:
                     action_id INTEGER PRIMARY KEY, kind TEXT NOT NULL,
                     payload TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS lists(
+                    list_version TEXT PRIMARY KEY,
+                    list_digest TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
             """)
 
     @contextmanager
@@ -103,3 +108,30 @@ class Repository:
             cursor = connection.execute('INSERT INTO actions(kind,payload) VALUES(?,?)',
                                         (kind, canonical(payload)))
             return {'action_id': cursor.lastrowid, 'kind': kind, **payload}
+
+    def save_list(self, list_version, payload):
+        """登记正在使用的销售名单版本；同一版本号不能对应两份不同名单。"""
+        payload = json.loads(canonical(payload))
+        list_digest = digest(payload)
+        with self.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            previous = connection.execute(
+                'SELECT list_digest,payload FROM lists WHERE list_version=?',
+                (list_version,),
+            ).fetchone()
+            if previous:
+                if previous[0] != list_digest:
+                    raise Conflict('该销售名单版本已对应其他名单内容')
+                return json.loads(previous[1])
+            connection.execute('INSERT INTO lists VALUES(?,?,?)',
+                               (list_version, list_digest, canonical(payload)))
+        return payload
+
+    def current_list(self, list_version):
+        with self.connect() as connection:
+            record = connection.execute(
+                'SELECT payload FROM lists WHERE list_version=?', (list_version,)
+            ).fetchone()
+        if record is None:
+            raise KeyError('未登记该销售名单版本')
+        return json.loads(record[0])

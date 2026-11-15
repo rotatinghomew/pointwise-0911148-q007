@@ -23,7 +23,18 @@ class Service:
         dataset = load(self.source)
         require_tables(dataset, TABLES)
         snapshot = visible(dataset, request['as_of'])
-        result = OPERATIONS[operation](snapshot, request.get('options', {}))
+        options = request.get('options') or {}
+        if not isinstance(options, dict):
+            raise ValueError('分析选项须为对象')
+        options = dict(options)
+        if 'as_of' in options and options['as_of'] != request['as_of']:
+            raise ValueError('分析选项的 as_of 与请求截止时间不一致')
+        options['as_of'] = request['as_of']
+        result = OPERATIONS[operation](snapshot, options)
+        if operation == 'trial_conversion':
+            version = result['list']['version']
+            entry = {'version': version, 'account_ids': result['list']['account_ids']}
+            self.repository.save_list(version, entry)
         return self.repository.remember(request['request_id'], request, snapshot, result)
 
     def apply(self, request):

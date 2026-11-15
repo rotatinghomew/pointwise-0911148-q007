@@ -20,6 +20,10 @@ def main():
     server.add_argument('--host', default='127.0.0.1')
     server.add_argument('--port', type=int, default=8080)
     commands.add_parser('demo', help='展示当前覆盖分析')
+    conversion = commands.add_parser('score', help='企业成交预测与销售跟进排序')
+    conversion.add_argument('--as-of', default='2026-09-30T23:59:59Z')
+    conversion.add_argument('--request-id', default='conversion-september')
+    conversion.add_argument('--list-version', default='sales-list-2026-09')
     args = parser.parse_args()
     service = Service(args.source, args.database)
     if args.command == 'serve':
@@ -31,6 +35,10 @@ def main():
             pass
         finally:
             instance.server_close()
+    elif args.command == 'score':
+        request = {'operation': 'trial_conversion', 'request_id': args.request_id,
+                   'as_of': args.as_of, 'options': {'list_version': args.list_version}}
+        print(json.dumps(service.run(request), ensure_ascii=False, indent=2))
     else:
         request = {'operation': OPERATION, 'request_id': getattr(args, 'request_id', 'demo-current'),
                    'as_of': getattr(args, 'as_of', '2026-09-30T23:59:59Z')}
